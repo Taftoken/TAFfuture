@@ -29,46 +29,23 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
         _;
         inSwapAndLiquify = false;
     }
+=
+    string constant  _name = "TAFToken V2";
+    string  constant _symbol = "TAF";
+    uint256 constant _initialSupply = 100000000 * 10**18; // 0
 
 
-    bytes32 public DOMAIN_SEPARATOR; 
-
-    // keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
-    bytes32 public constant PERMIT_TYPEHASH = 0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9;
-
-    /// @notice The EIP-712 typehash for the contract's domain
-    bytes32 public constant DOMAIN_TYPEHASH = keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
-
-
-    /// @notice The EIP-712 typehash for the delegation struct used by the contract
-    bytes32 public constant DELEGATION_TYPEHASH = keccak256("Delegation(address delegatee,uint256 nonce,uint256 expiry)");
-
-    
-    // the percentage of PTM which can be created per mint
-    //uint256 _mintCap = 2; // 2% of current totalSupply
-    
-    string _version = "1";
-
-    mapping(address => uint) public nonces;
-
-    /// @notice A record of each accounts delegate
-    mapping (address => address) public delegates;
-
-    /// @notice A checkpoint for marking number of votes from a given block
-    struct Checkpoint {
-        uint32 fromBlock;
-        uint256 votes;
-    }
-
-    /// @notice A record of votes checkpoints for each account, by index
-    mapping (address => mapping (uint32 => Checkpoint)) public checkpoints;
-
-    /// @notice The number of checkpoints for each account
-    mapping (address => uint32) public numCheckpoints;
+    event MinTokensBeforeSwapUpdated(uint256 minTokensBeforeSwap);
+    event SwapAndLiquifyEnabledUpdated(bool enabled);
+    event SwapAndLiquify(
+        uint256 tokensSwapped,
+        uint256 ethReceived,
+        uint256 tokensIntoLiqudity
+    );
     
 
-    constructor() ERC20PresetMinterPauser("TAFToken", "TAF"){
-        mint(msg.sender, 100000000 * 10**18);
+    constructor() ERC20PresetMinterPauser(_name, _symbol){
+        mint(msg.sender, _initialSupply);
 
         isLiquidityFeeEnabled = true;
         maxTxAmount = totalSupply().div(1000);
@@ -87,18 +64,6 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
 
         setLiquidityFee(500);
     }
-
-    function init() public payable{
-        mint(address(this), 100000 * 10**18);
-        _approve(address(this), address(uniswapV2Router), 1000000 * 10**18);
-        addLiquidity(1000 * 10**18,  msg.value);
-        // swapTokensForEth(10 * 10**18);
-    }
-
-    /**
-    Just to handle and recive Ethers if needed
-     */
-    receive() external payable {}
 
     /**
     set Liquidity fee
@@ -124,6 +89,7 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
      */
     function toggleLiquidityFee() public onlyOwner{
         isLiquidityFeeEnabled = !isLiquidityFeeEnabled;
+        emit SwapAndLiquifyEnabledUpdated(isLiquidityFeeEnabled)
     }
 
 
@@ -176,7 +142,7 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
         // add liquidity to uniswap
        addLiquidity(otherHalf, newBalance);
 
-        // emit SwapAndLiquify(half, newBalance, otherHalf);
+        emit SwapAndLiquify(half, newBalance, otherHalf);
     }
 
     function swapTokensForEth(uint256 tokenAmount) private {
