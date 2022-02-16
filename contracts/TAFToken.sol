@@ -97,7 +97,7 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
         require(amount > 0, "Transfer amount must be greater than zero");
 
         if(from != owner() && to != owner())
-            require(amount <= _maxTxAmount, "Transfer amount exceeds the maxTxAmount.");
+            require(amount <= maxTxAmount, "Transfer amount exceeds the maxTxAmount.");
 
         uint256 fee = (liquidityFee * amount) / 10000;
 
