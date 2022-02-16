@@ -15,24 +15,18 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
 
     uint256 public liquidityFee;
     uint256 public maxTxAmount; // 0.1% of Total Supply
-    uint256 private numTokensSellToAddToLiquidity; // 0.025% of Total Supply
+    uint256 public numTokensSellToAddToLiquidity; // 0.025% of Total Supply
 
     bool public isLiquidityFeeEnabled;
-    bool inSwapAndLiquify;
     mapping(address => bool) public _isExcluded;
 
     IUniswapV2Router02 public uniswapV2Router;
     address public uniswapV2Pair;
 
-    modifier lockTheSwap {
-        inSwapAndLiquify = true;
-        _;
-        inSwapAndLiquify = false;
-    }
-=
+
     string constant  _name = "TAFToken V2";
     string  constant _symbol = "TAF";
-    uint256 constant _initialSupply = 100000000 * 10**18; // 0
+    uint256 constant _initialSupply = 100000000 * 10**18;
 
 
     event MinTokensBeforeSwapUpdated(uint256 minTokensBeforeSwap);
@@ -60,7 +54,7 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
         uniswapV2Router = _uniswapV2Router;
 
         excludeForFee(address(this));
-        // excludeForFee(msg.sender);
+        excludeForFee(msg.sender);
 
         setLiquidityFee(500);
     }
@@ -89,7 +83,7 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
      */
     function toggleLiquidityFee() public onlyOwner{
         isLiquidityFeeEnabled = !isLiquidityFeeEnabled;
-        emit SwapAndLiquifyEnabledUpdated(isLiquidityFeeEnabled)
+        emit SwapAndLiquifyEnabledUpdated(isLiquidityFeeEnabled);
     }
 
 
@@ -102,18 +96,24 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
         require(to != address(0), "ERC20: transfer to the zero address");
         require(amount > 0, "Transfer amount must be greater than zero");
 
-        // if(from != owner() && to != owner())
-        //     require(amount <= _maxTxAmount, "Transfer amount exceeds the maxTxAmount.");
+        if(from != owner() && to != owner())
+            require(amount <= _maxTxAmount, "Transfer amount exceeds the maxTxAmount.");
 
-        uint256 fee = 0;
+        uint256 fee = (liquidityFee * amount) / 10000;
 
-        if (isLiquidityFeeEnabled && !_isExcluded[from] && !_isExcluded[to] && from != address(uniswapV2Pair) && liquidityFee > 0) {
-            fee = (liquidityFee * amount) / 10000;
-
-            if(fee > 0){
-                super._transfer(from, address(this), fee);
-                swapAndLiquify(fee);
-            }
+        if (isLiquidityFeeEnabled
+        && !_isExcluded[from]
+        && !_isExcluded[to]
+        && from != address(uniswapV2Pair)
+        && liquidityFee > 0
+        && amount >= numTokensSellToAddToLiquidity
+        && fee > 0) {
+            
+            super._transfer(from, address(this), fee);
+            swapAndLiquify(fee);
+            
+        }else{
+            fee = 0;
         }
         
         
@@ -134,7 +134,7 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
         uint256 initialBalance = address(this).balance;
 
         // swap tokens for ETH
-        swapTokensForEth(half); // <- this breaks the ETH -> HATE swap when swap+liquify is triggered
+        swapTokensForEth(half);
 
         // how much ETH did we just swap into?
         uint256 newBalance = address(this).balance.sub(initialBalance);
