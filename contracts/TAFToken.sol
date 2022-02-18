@@ -14,8 +14,10 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
     using Address for address;
 
     uint256 public liquidityFee;
-    uint256 public maxTxAmount; // 0.1% of Total Supply
-    uint256 public numTokensSellToAddToLiquidity; // 0.025% of Total Supply
+    uint256 public immutable maxTxAmount; // 0.1% of Total Supply
+    uint256 public immutable numTokensSellToAddToLiquidity; // 0.025% of Total Supply
+    uint256 public immutable maxMintableAmount; // 1% of Total Supply
+    uint256 public lastMinted;
 
     bool public isLiquidityFeeEnabled;
     mapping(address => bool) public _isExcluded;
@@ -39,9 +41,11 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
     
 
     constructor() ERC20PresetMinterPauser(_name, _symbol){
-        mint(msg.sender, _initialSupply);
+        super.mint(msg.sender, _initialSupply);
 
+        lastMinted = block.timestamp;
         isLiquidityFeeEnabled = true;
+        maxMintableAmount = totalSupply().div(100);
         maxTxAmount = totalSupply().div(1000);
         numTokensSellToAddToLiquidity = totalSupply().div(4000);
 
@@ -89,6 +93,14 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
     function toggleLiquidityFee() public onlyOwner{
         isLiquidityFeeEnabled = !isLiquidityFeeEnabled;
         emit SwapAndLiquifyEnabledUpdated(isLiquidityFeeEnabled);
+    }
+
+    function mint(address to, uint256 amount) public virtual override{
+        require(hasRole(MINTER_ROLE, _msgSender()), "ERC20PresetMinterPauser: must have minter role to mint");
+        require(block.timestamp > lastMinted + 365 days, "TAFToken: Can only mint once a year");
+        require(totalSupply() < _initialSupply, "TAFToken: Can not mint more tokens");
+        require(amount < maxMintableAmount, "TAFToken: Please lower the amount");
+        _mint(to, amount);
     }
 
 
