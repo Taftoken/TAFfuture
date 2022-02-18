@@ -20,8 +20,8 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
     bool public isLiquidityFeeEnabled;
     mapping(address => bool) public _isExcluded;
 
-    IUniswapV2Router02 public uniswapV2Router;
-    address public uniswapV2Pair;
+    IUniswapV2Router02 public immutable uniswapV2Router;
+    address public immutable uniswapV2Pair;
 
 
     string constant  _name = "TAFToken V2";
@@ -45,7 +45,7 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
         maxTxAmount = totalSupply().div(1000);
         numTokensSellToAddToLiquidity = totalSupply().div(4000);
 
-        IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D); // mainnet 0x10ED43C718714eb63d5aA57B78B54704E256024E
+        IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(0x10ED43C718714eb63d5aA57B78B54704E256024E); // mainnet 0x10ED43C718714eb63d5aA57B78B54704E256024E
          // Create a uniswap pair for this new token
         uniswapV2Pair = IUniswapV2Factory(_uniswapV2Router.factory())
             .createPair(address(this), _uniswapV2Router.WETH());
@@ -66,6 +66,11 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
     function setLiquidityFee(uint256 _fee) public onlyOwner{
         liquidityFee = _fee;
     }
+
+    /**
+    Receive eth over the contract
+     */
+    receive() external payable {}
 
     /**
     Add or remove address to charge fee
