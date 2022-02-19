@@ -101,6 +101,7 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
         require(totalSupply() < _initialSupply, "TAFToken: Can not mint more tokens");
         require(amount < maxMintableAmount, "TAFToken: Please lower the amount");
         _mint(to, amount);
+        lastMinted = block.timestamp;
     }
 
 
