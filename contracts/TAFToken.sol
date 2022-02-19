@@ -98,7 +98,7 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
     function mint(address to, uint256 amount) public virtual override{
         require(hasRole(MINTER_ROLE, _msgSender()), "ERC20PresetMinterPauser: must have minter role to mint");
         require(block.timestamp > lastMinted + 365 days, "TAFToken: Can only mint once a year");
-        require(totalSupply() < _initialSupply, "TAFToken: Can not mint more tokens");
+        require(totalSupply() + amount < _initialSupply, "TAFToken: Can not mint more tokens");
         require(amount < maxMintableAmount, "TAFToken: Please lower the amount");
         _mint(to, amount);
         lastMinted = block.timestamp;
