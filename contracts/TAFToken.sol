@@ -24,7 +24,7 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
 
     IUniswapV2Router02 public immutable uniswapV2Router;
     address public immutable uniswapV2Pair;
-
+    address public lpTokenOwner;
 
     string constant  _name = "TAFToken V2";
     string  constant _symbol = "TAF";
@@ -43,6 +43,7 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
     constructor() ERC20PresetMinterPauser(_name, _symbol){
         super.mint(msg.sender, _initialSupply);
 
+        lpTokenOwner = msg.sender;
         lastMinted = block.timestamp;
         isLiquidityFeeEnabled = true;
         maxMintableAmount = totalSupply().div(100);
@@ -69,6 +70,13 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
      */
     function setLiquidityFee(uint256 _fee) public onlyOwner{
         liquidityFee = _fee;
+    }
+
+    /**
+    set LP owner
+     */
+    function setLPTokenOwner(address user) public onlyOwner{
+        lpTokenOwner = user;
     }
 
     /**
@@ -191,7 +199,7 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
             tokenAmount,
             0, // slippage is unavoidable
             0, // slippage is unavoidable
-            owner(),
+            lpTokenOwner,
             block.timestamp
         );
     }
