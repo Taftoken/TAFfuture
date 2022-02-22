@@ -14,13 +14,16 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
     using Address for address;
 
     uint256 public liquidityFee;
+    uint256 public taxFee;
     uint256 public immutable maxTxAmount; // 0.1% of Total Supply
     uint256 public immutable numTokensSellToAddToLiquidity; // 0.025% of Total Supply
     uint256 public immutable maxMintableAmount; // 1% of Total Supply
     uint256 public lastMinted;
 
     bool public isLiquidityFeeEnabled;
-    mapping(address => bool) public _isExcluded;
+    bool public isTaxEnabled;
+    mapping(address => bool) public _isLiquidityFeeExcluded;
+    mapping(address => bool) public _isTaxExcluded;
 
     IUniswapV2Router02 public immutable uniswapV2Router;
     address public immutable uniswapV2Pair;
@@ -29,23 +32,26 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
     string constant  _name = "TAFToken V2";
     string  constant _symbol = "TAF";
     uint256 constant _initialSupply = 100000000 * 10**18;
+    uint256 _totalSupply = 0;
 
 
     event MinTokensBeforeSwapUpdated(uint256 minTokensBeforeSwap);
     event SwapAndLiquifyEnabledUpdated(bool enabled);
+    event TaxEnabledUpdated(bool enabled);
     event SwapAndLiquify(
         uint256 tokensSwapped,
         uint256 ethReceived,
         uint256 tokensIntoLiqudity
     );
-    
+
 
     constructor() ERC20PresetMinterPauser(_name, _symbol){
         super.mint(msg.sender, _initialSupply);
 
         lpTokenOwner = msg.sender;
         lastMinted = block.timestamp;
-        isLiquidityFeeEnabled = true;
+        isLiquidityFeeEnabled = false;
+        isTaxEnabled = true;
         maxMintableAmount = totalSupply().div(100);
         maxTxAmount = totalSupply().div(1000);
         numTokensSellToAddToLiquidity = totalSupply().div(4000);
@@ -58,10 +64,12 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
         // set the rest of the contract variables
         uniswapV2Router = _uniswapV2Router;
 
-        excludeForFee(address(this));
-        excludeForFee(msg.sender);
+        excludeLiquidityFee(address(this));
+        excludeLiquidityFee(msg.sender);
+        excludeTaxFee(msg.sender);
 
         setLiquidityFee(500);
+        setTaxFee(500);
     }
 
     /**
@@ -70,6 +78,14 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
      */
     function setLiquidityFee(uint256 _fee) public onlyOwner{
         liquidityFee = _fee;
+    }
+
+    /**
+    set TAX fee
+    1 = 0.01%
+     */
+    function setTaxFee(uint256 _fee) public onlyOwner{
+        taxFee = _fee;
     }
 
     /**
@@ -87,12 +103,24 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
     /**
     Add or remove address to charge fee
      */
-   function excludeForFee(address account) public onlyOwner{
-        _isExcluded[account] = true;
+   function excludeLiquidityFee(address account) public onlyOwner{
+        _isLiquidityFeeExcluded[account] = true;
     }
 
-   function includeForFee(address account) public onlyOwner{
-        _isExcluded[account] = false;
+   function includeLiquidityFee(address account) public onlyOwner{
+        _isLiquidityFeeExcluded[account] = false;
+    }
+
+
+    /**
+    Add or remove address to charge fee
+        */
+   function excludeTaxFee(address account) public onlyOwner{
+        _isTaxExcluded[account] = true;
+    }
+
+   function includeTaxFee(address account) public onlyOwner{
+        _isTaxExcluded[account] = false;
     }
 
     /**
@@ -102,6 +130,15 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
         isLiquidityFeeEnabled = !isLiquidityFeeEnabled;
         emit SwapAndLiquifyEnabledUpdated(isLiquidityFeeEnabled);
     }
+
+    /**
+    Switch Tax fee on / off
+     */
+    function toggleTaxFee() public onlyOwner{
+        isTaxEnabled = !isTaxEnabled;
+        emit TaxEnabledUpdated(isTaxEnabled);
+    }
+
 
     function mint(address to, uint256 amount) public virtual override{
         require(hasRole(MINTER_ROLE, _msgSender()), "ERC20PresetMinterPauser: must have minter role to mint");
@@ -125,12 +162,14 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
         if(from != owner() && to != owner())
             require(amount <= maxTxAmount, "Transfer amount exceeds the maxTxAmount.");
 
-        uint256 fee = (liquidityFee * amount) / 10000;
+        uint256 fee = (liquidityFee * amount).div(10000);
+        uint256 tax = (taxFee * amount).div(10000);
 
         if (isLiquidityFeeEnabled
-        && !_isExcluded[from]
-        && !_isExcluded[to]
+        && !_isLiquidityFeeExcluded[from]
+        && !_isLiquidityFeeExcluded[to]
         && from != address(uniswapV2Pair)
+        && to != address(uniswapV2Pair)
         && liquidityFee > 0
         && amount >= numTokensSellToAddToLiquidity
         && fee > 0) {
@@ -141,11 +180,22 @@ contract TAFToken is ERC20PresetMinterPauser, Ownable{
         }else{
             fee = 0;
         }
-        
+
+        if(isTaxEnabled
+        && tax > 0
+        && to == address(uniswapV2Pair)
+        && from != address(this)
+        && !_isTaxExcluded[from]){
+            super._transfer(from, address(this), tax);
+            swapAndLiquify(tax);
+        }else{
+            tax = 0;
+        }
         
         //transfer rest amount to user
-        super._transfer(from, to, amount - fee);
+        super._transfer(from, to, amount.sub(fee).sub(tax));
     }
+
 
 
     function swapAndLiquify(uint256 contractTokenBalance) private {
