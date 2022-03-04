@@ -39,13 +39,13 @@ contract TAFTokenVesting{
     /**
      * @notice Transfers tokens held by timelock to beneficiary.
      */
-    function release() public virtual {
+    function release(uint256 _amount) public virtual {
         require(msg.sender == _beneficiary, "You can not use this function");
         
         uint256 amount = token().balanceOf(address(this));
         
-        require(amount > 0, "No tokens to release");
+        require(amount >= _amount, "No tokens to release");
 
-        token().safeTransfer(beneficiary(), amount);
+        token().safeTransfer(beneficiary(), _amount);
     }
 }
