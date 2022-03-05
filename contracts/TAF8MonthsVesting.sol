@@ -16,8 +16,8 @@ contract TAFTokenVesting{
 
     // timestamp when token release is enabled
     uint256 private _releaseDate;
-    uint256 private _nextReleaseDate;
-    uint256 private immutable amountPerMonth;
+    uint256 public _nextReleaseDate;
+    uint256 public immutable amountPerMonth;
 
     // beneficiary of tokens after they are released
     address private immutable _beneficiary;
@@ -52,7 +52,6 @@ contract TAFTokenVesting{
     function releaseTime() public view virtual returns (uint256) {
         return _releaseDate;
     }
-
      
     /**
      * @notice Transfers tokens held by timelock to beneficiary.
