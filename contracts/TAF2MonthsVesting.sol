@@ -16,6 +16,8 @@ contract TAFTokenVesting{
 
     // timestamp when token release is enabled
     uint256 private _releaseDate;
+    uint256 private _nextReleaseDate;
+    uint256 private immutable amountPerMonth;
 
     // beneficiary of tokens after they are released
     address private immutable _beneficiary;
@@ -25,6 +27,9 @@ contract TAFTokenVesting{
         _token = IERC20(token_);
         _beneficiary = msg.sender;
         _releaseDate = BokkyPooBahsDateTimeLibrary.addMonths(block.timestamp, 2);
+        _nextReleaseDate = BokkyPooBahsDateTimeLibrary.addMonths(_releaseDate, 1);
+
+        amountPerMonth = 2518939394 * (10 ** 15);
     }
 
     /**
@@ -53,13 +58,18 @@ contract TAFTokenVesting{
      * @notice Transfers tokens held by timelock to beneficiary.
      */
     function release() public virtual {
-        require(block.timestamp >= _releaseDate, "TokenTimelock: current time is before release time");
+        require(block.timestamp >= _nextReleaseDate, "TokenTimelock: current time is before release time");
         require(msg.sender == _beneficiary, "You can not use this function");
-        
-        uint256 amount = token().balanceOf(address(this));
-        
-        require(amount > 0, "No tokens to release");
 
-        token().safeTransfer(beneficiary(), amount);
+        uint256 amountToWithdraw = amountPerMonth;
+        uint256 amount = token().balanceOf(address(this));
+
+        if(block.timestamp >= _releaseDate){
+            amountToWithdraw = amount;
+        }else{
+            require(amount >= amountToWithdraw, "No tokens to release");
+            _nextReleaseDate = BokkyPooBahsDateTimeLibrary.addMonths(_nextReleaseDate, 1);
+        }
+        token().safeTransfer(beneficiary(), amountToWithdraw);
     }
 }
