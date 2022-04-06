@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "./libs/DateTime.sol";
+import "../libs/DateTime.sol";
 
 contract TAFTokenVesting{
 
@@ -26,10 +26,10 @@ contract TAFTokenVesting{
     constructor(address token_) {
         _token = IERC20(token_);
         _beneficiary = msg.sender;
-        _releaseDate = BokkyPooBahsDateTimeLibrary.addMonths(block.timestamp, 8);
+        _releaseDate = BokkyPooBahsDateTimeLibrary.addMonths(block.timestamp, 2);
         _nextReleaseDate = BokkyPooBahsDateTimeLibrary.addMonths(_releaseDate, 1);
 
-        amountPerMonth = 1583333333 * (10 ** 15);
+        amountPerMonth = 2518939394 * (10 ** 15);
     }
 
     /**
@@ -52,6 +52,7 @@ contract TAFTokenVesting{
     function releaseTime() public view virtual returns (uint256) {
         return _releaseDate;
     }
+
      
     /**
      * @notice Transfers tokens held by timelock to beneficiary.
