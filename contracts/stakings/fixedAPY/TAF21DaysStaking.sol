@@ -5,7 +5,7 @@ import "../../libs/DateTime.sol";
 
 //counter address for number of restaking
 
-contract TAF7DaysStaking {
+contract TAF21DaysStaking {
 
     IERC20 public rewardsToken;
     IERC20 public stakingToken;
@@ -14,13 +14,18 @@ contract TAF7DaysStaking {
     uint256 public totalSupply;
     uint256 public withdrawFee;
     uint256 public rollOverFee;
+    uint256 public unstakePenalty;
     uint256 public maxTotalStakingAmount;
+    uint256 public poolExpiry;
+    uint256 public maxUserStakingAmount;
+    uint256 public minUserStakingAmount;
 
     address public owner;
 
     bool public paused;
 
     mapping(address => uint256) public balances;
+    mapping(address => uint256) public rewardsOut;
     mapping(address => uint256) public timestamp;
 
     modifier onlyOwner {
@@ -28,25 +33,41 @@ contract TAF7DaysStaking {
       _;
    }
 
-    modifier onlyAfter21Days {
-      require(BokkyPooBahsDateTimeLibrary.diffDays(timestamp[msg.sender], block.timestamp ) >= 28);
-      _;
-   }
 
-    constructor(uint256 _apy, address _stakingToken, address _rewardsToken, uint256 _maxTotalStakingAmount){
+    constructor(uint256 _apy, address _stakingToken, address _rewardsToken, uint256 _maxTotalStakingAmount, uint256 maxUS, uint256 minUS){
         apy = _apy;
         stakingToken = IERC20(_stakingToken);
         rewardsToken = IERC20(_rewardsToken);
         maxTotalStakingAmount = _maxTotalStakingAmount;
 
+        minUserStakingAmount = minUS;
+        maxUserStakingAmount = maxUS;
+
         withdrawFee = 200;
         rollOverFee = 100;
 
         owner = msg.sender;
+
+        paused = true;
+    }
+
+    function startStaking(uint256 _unstakeMaxFee) public{
+        poolExpiry = block.timestamp + 21 days;
+        paused = false;
+
+        unstakePenalty = _unstakeMaxFee;
     }
 
     function updateMaxStakingAmount(uint256 amount) onlyOwner public{
         maxTotalStakingAmount = amount;
+    }
+
+    function updateMinUserStakingAmount(uint256 amount) onlyOwner public{
+        minUserStakingAmount = amount;
+    }
+
+    function updateMaxUserStakingAmount(uint256 amount) onlyOwner public{
+        maxUserStakingAmount = amount;
     }
 
     function updateWithdrawFee(uint256 amount) onlyOwner public{
@@ -71,6 +92,10 @@ contract TAF7DaysStaking {
 
     function stake(uint _amount) public{
         require(!paused, "Staking contract is paused!");
+        require(block.timestamp < poolExpiry, "Staking contract is over!");
+        require(_amount >= minUserStakingAmount, "Must be above min user staking amount");
+
+        require(balances[msg.sender] + _amount <= maxUserStakingAmount, "Must be less then max user staking amount");
 
         if(maxTotalStakingAmount > 0)
             require(totalSupply + _amount <= maxTotalStakingAmount, "Max Staking amount reached");
@@ -82,7 +107,7 @@ contract TAF7DaysStaking {
     }
 
     function unstake() public{
-        require(BokkyPooBahsDateTimeLibrary.diffHours(timestamp[msg.sender], block.timestamp) > 24, "Can only withdraw after 24 hours");
+        require(block.timestamp > poolExpiry + 7 days, "Can only withdraw once the time is right");
         
         uint256 _amount = balances[msg.sender];
         uint256 fee = (_amount * withdrawFee)/10000;
@@ -99,20 +124,48 @@ contract TAF7DaysStaking {
         totalSupply -= _amount;
         balances[msg.sender] -= _amount;
         timestamp[msg.sender] = 0;
+        rewardsOut[msg.sender] = 0;
+    }
+
+    function forceUnstake() public{
+        require(block.timestamp < poolExpiry + 7 days, "Please use unstake function instead.");
+
+        uint256 dayDiff = BokkyPooBahsDateTimeLibrary.diffDays(block.timestamp, poolExpiry + 8 days);
+
+        uint256 sAmount = (dayDiff * unstakePenalty * balances[msg.sender]) / 2800;
+
+        if(earned() > 0)
+            rewardsToken.transfer(msg.sender, earned());
+
+        if(sAmount > 0)
+            stakingToken.transfer(msg.sender, sAmount);
+
+        if(balances[msg.sender] - sAmount > 0)
+            stakingToken.transfer(owner, balances[msg.sender] - sAmount);
+
+
+        totalSupply -= balances[msg.sender];
+        balances[msg.sender] = 0;
+        timestamp[msg.sender] = 0;
+        rewardsOut[msg.sender] = 0;
     }
 
 
     function earned() public view returns(uint256){
 
-        uint256 dayDiff = BokkyPooBahsDateTimeLibrary.diffMinutes(timestamp[msg.sender], block.timestamp );
-
-        if(dayDiff > 21 * 24 * 60){
-            dayDiff = 21 * 24 * 60;
-        }
+        uint256 dayDiff = BokkyPooBahsDateTimeLibrary.diffMinutes(timestamp[msg.sender], block.timestamp > poolExpiry ? poolExpiry : block.timestamp);
 
         uint256 reward = (apy * balances[msg.sender] * dayDiff ) / (365 * 24 * 60 * 10000);
 
-        return reward;
+        return reward - rewardsOut[msg.sender];
+    }
+
+    function withdrawReward() public{
+        uint256 amount = earned();
+
+        rewardsToken.transfer(msg.sender, amount);
+
+        rewardsOut[msg.sender] += amount;
     }
 
 
@@ -126,5 +179,10 @@ contract TAF7DaysStaking {
 
     function timings() public view returns (uint256, uint256){
         return (timestamp[msg.sender], timestamp[msg.sender] + 28 days);
+    }
+
+    function userInfo() public view returns (uint256, uint256, uint256, uint256){
+        (uint256 start, uint256 end) = timings();
+        return (balances[msg.sender], earned(), start, end);
     }
 }
