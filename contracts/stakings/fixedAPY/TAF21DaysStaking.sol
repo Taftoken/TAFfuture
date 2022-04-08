@@ -58,6 +58,10 @@ contract TAF21DaysStaking {
         unstakePenalty = _unstakeMaxFee;
     }
 
+    function updateUnstakePenalty(uint256 amount) public {
+        unstakePenalty = amount;
+    }
+
     function updateMaxStakingAmount(uint256 amount) onlyOwner public{
         maxTotalStakingAmount = amount;
     }
@@ -102,11 +106,15 @@ contract TAF21DaysStaking {
 
         if(maxTotalStakingAmount > 0)
             require(totalSupply + _amount <= maxTotalStakingAmount, "Max Staking amount reached");
+
+        if(balances[msg.sender] > 0)
+            withdrawReward();
         
         totalSupply += _amount;
         balances[msg.sender] += _amount;
         stakingToken.transferFrom(msg.sender, address(this), _amount);
         timestamp[msg.sender] = block.timestamp;
+        rewardsOut[msg.sender] = 0;
     }
 
     function unstake() public{
@@ -135,7 +143,10 @@ contract TAF21DaysStaking {
 
         uint256 dayDiff = BokkyPooBahsDateTimeLibrary.diffDays(block.timestamp, poolExpiry + 8 days);
 
-        uint256 sAmount = (dayDiff * unstakePenalty * balances[msg.sender]) / 2800;
+        uint256 sAmount = balances[msg.sender];
+
+        if(unstakePenalty > 0)
+            sAmount = (dayDiff * unstakePenalty * balances[msg.sender]) / 2800;
 
         if(earned() > 0)
             rewardsToken.transfer(msg.sender, earned());
