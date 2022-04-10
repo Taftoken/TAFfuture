@@ -117,10 +117,10 @@ contract TAF21DaysStaking {
         rewardsOut[msg.sender] = 0;
     }
 
-    function unstake() public{
+    function unstake(uint256 _amount) public{
         require(block.timestamp > poolExpiry + 7 days, "Can only withdraw once the time is right");
+        require(balances[msg.sender] >= _amount, "Not have enough balance");
         
-        uint256 _amount = balances[msg.sender];
         uint256 fee = (_amount * withdrawFee)/10000;
 
         if(_amount > 0)
@@ -134,33 +134,34 @@ contract TAF21DaysStaking {
 
         totalSupply -= _amount;
         balances[msg.sender] -= _amount;
-        timestamp[msg.sender] = 0;
+        timestamp[msg.sender] = block.timestamp;
         rewardsOut[msg.sender] = 0;
     }
 
-    function forceUnstake() public{
+    function forceUnstake(uint256 _amount) public{
         require(block.timestamp < poolExpiry + 7 days, "Please use unstake function instead.");
+        require(balances[msg.sender] >= _amount, "Not have enough balance");
 
         uint256 dayDiff = BokkyPooBahsDateTimeLibrary.diffDays(block.timestamp, poolExpiry + 8 days);
 
         uint256 fee = 0;
 
         if(unstakePenalty > 0)
-            fee = (dayDiff * unstakePenalty * balances[msg.sender]) / 2800;
+            fee = (dayDiff * unstakePenalty * _amount) / 2800;
 
         if(earned() > 0)
             rewardsToken.transfer(msg.sender, earned());
 
-        if(balances[msg.sender] - fee > 0)
-            stakingToken.transfer(msg.sender, balances[msg.sender] - fee);
+        if(_amount - fee > 0)
+            stakingToken.transfer(msg.sender, _amount - fee);
 
         if(fee > 0)
             stakingToken.transfer(owner, fee);
 
 
-        totalSupply -= balances[msg.sender];
-        balances[msg.sender] = 0;
-        timestamp[msg.sender] = 0;
+        totalSupply -= _amount;
+        balances[msg.sender] -= _amount;
+        timestamp[msg.sender] = block.timestamp;
         rewardsOut[msg.sender] = 0;
     }
 
