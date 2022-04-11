@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "./TAFInvoice.sol";
+import "../interface/IERC20.sol";
 
 
 contract TAFInvoiceFactory{
