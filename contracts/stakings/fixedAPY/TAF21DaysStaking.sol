@@ -21,6 +21,7 @@ contract TAF21DaysStaking {
     uint256 public minUserStakingAmount;
 
     address public owner;
+    address public charityAddress;
 
     bool public paused;
 
@@ -47,6 +48,7 @@ contract TAF21DaysStaking {
         rollOverFee = 100;
 
         owner = msg.sender;
+        charityAddress = msg.sender;
 
         paused = true;
     }
@@ -60,6 +62,10 @@ contract TAF21DaysStaking {
 
     function updateUnstakePenalty(uint256 amount) onlyOwner public {
         unstakePenalty = amount;
+    }
+
+    function updateCharityAddress(address user) onlyOwner public{
+        charityAddress = user;
     }
 
     function updateMaxStakingAmount(uint256 amount) onlyOwner public{
@@ -108,11 +114,12 @@ contract TAF21DaysStaking {
             require(totalSupply + _amount <= maxTotalStakingAmount, "Max Staking amount reached");
 
         if(balances[msg.sender] > 0)
-            withdrawReward();
+            withdrawReward(0);
         
         totalSupply += _amount;
         balances[msg.sender] += _amount;
-        stakingToken.transferFrom(msg.sender, address(this), _amount);
+
+        safeTransferFrom(stakingToken, msg.sender, address(this), _amount);
         timestamp[msg.sender] = block.timestamp;
         rewardsOut[msg.sender] = 0;
     }
@@ -124,13 +131,16 @@ contract TAF21DaysStaking {
         uint256 fee = (_amount * withdrawFee)/10000;
 
         if(_amount > 0)
-            stakingToken.transfer(msg.sender, _amount - fee);
+            safeTransfer(stakingToken, msg.sender, _amount - fee);
+
 
         if(fee > 0)
-            stakingToken.transfer(owner, fee);
+            safeTransfer(stakingToken, owner, fee);
+
 
         if(earned() > 0)
-            rewardsToken.transfer(msg.sender, earned());
+            safeTransfer(rewardsToken, msg.sender, earned());
+
 
         totalSupply -= _amount;
         balances[msg.sender] -= _amount;
@@ -142,21 +152,24 @@ contract TAF21DaysStaking {
         require(block.timestamp < poolExpiry + 7 days, "Please use unstake function instead.");
         require(balances[msg.sender] >= _amount, "Not have enough balance");
 
-        uint256 dayDiff = BokkyPooBahsDateTimeLibrary.diffDays(block.timestamp, poolExpiry + 8 days);
+        uint256 minDiff = BokkyPooBahsDateTimeLibrary.diffMinutes(block.timestamp, poolExpiry + 7 days);
 
         uint256 fee = 0;
 
         if(unstakePenalty > 0)
-            fee = (dayDiff * unstakePenalty * _amount) / 2800;
+            fee = (minDiff * unstakePenalty * _amount) / (2800 * 24 * 60);
 
         if(earned() > 0)
-            rewardsToken.transfer(msg.sender, earned());
+            safeTransfer(rewardsToken, msg.sender, earned());
+
 
         if(_amount - fee > 0)
-            stakingToken.transfer(msg.sender, _amount - fee);
+            safeTransfer(stakingToken, msg.sender, _amount - fee);
+
 
         if(fee > 0)
-            stakingToken.transfer(owner, fee);
+            safeTransfer(stakingToken, owner, fee);
+
 
 
         totalSupply -= _amount;
@@ -175,26 +188,71 @@ contract TAF21DaysStaking {
         return reward - rewardsOut[msg.sender];
     }
 
-    function withdrawReward() public{
+    function withdrawReward(uint256 pAmount) public{
+
+        require(pAmount + withdrawFee <= 10000, "Can only donate 100% of reward token");
+
         uint256 amount = earned();
+
+        uint256 charity = 0;
 
         uint256 fee = (withdrawFee * amount) / 10000;
 
-        rewardsToken.transfer(msg.sender, amount - fee);
+        if(pAmount > 0){
+            charity = (pAmount * amount) / 10000;
+
+            if(charity > 0)
+                safeTransfer(rewardsToken, charityAddress, charity);
+
+        }
+
+        safeTransfer(rewardsToken, msg.sender, amount - (fee + charity));
+
 
         if(fee > 0)
-            rewardsToken.transfer(owner, fee);
+            safeTransfer(rewardsToken, owner, fee);
+
 
         rewardsOut[msg.sender] += amount;
     }
 
+    function safeTransfer(IERC20 token, address to, uint256 amount) private{
+        uint256 maxTransfer = 100000 * (10 ** 18);
+
+        uint256 quotient = amount / maxTransfer;
+        uint256 remainder = amount - maxTransfer * quotient;
+
+        for(uint i = 0; i < quotient; i++){
+            token.transfer(to, maxTransfer);
+        }
+
+        if(remainder > 0)
+            token.transfer(to, remainder);
+    }
+
+    function safeTransferFrom(IERC20 token, address from, address to, uint256 amount) private{
+        uint256 maxTransfer = 100000 * (10 ** 18);
+
+        uint256 quotient = amount / maxTransfer;
+        uint256 remainder = amount - maxTransfer * quotient;
+
+        for(uint i = 0; i < quotient; i++){
+            token.transferFrom(from, to, maxTransfer);
+        }
+
+        if(remainder > 0)
+            token.transferFrom(from, to, remainder);
+    }
+
 
     function depositRewardToken(uint256 _amount) public{
-        rewardsToken.transferFrom(msg.sender, address(this), _amount);
+        safeTransferFrom(rewardsToken, msg.sender, address(this), _amount);
+
     }
 
     function withdrawRewardToken(uint256 _amount) onlyOwner public{
-        rewardsToken.transfer(msg.sender, _amount);
+        safeTransfer(rewardsToken, msg.sender, _amount);
+
     }
 
     function timings() public view returns (uint256, uint256){
