@@ -100,6 +100,22 @@ contract TAFYearlyStaking{
         return (balances[msg.sender], earned(), start, end);
     }
 
+    function apy() public view returns(uint256){
+
+        if(timestamp[msg.sender] == 0)
+            return apyOnYear[1];
+
+        uint256 yearDiff = BokkyPooBahsDateTimeLibrary.diffYears(timestamp[msg.sender], block.timestamp);
+
+        uint256 thisYearMinDiff = BokkyPooBahsDateTimeLibrary.diffMinutes(timestamp[msg.sender], block.timestamp) - (yearDiff * 525600);
+
+        if(thisYearMinDiff > 0){
+            return apyOnYear[yearDiff + 1];
+        }else{
+            return apyOnYear[yearDiff];
+        }
+    }
+
     function isForceUnstakeNeeded() public view returns(bool){
         return block.timestamp < BokkyPooBahsDateTimeLibrary.addYears(timestamp[msg.sender], lockingPeriodInYears);
     }
