@@ -76,6 +76,7 @@ contract TAFYearlyStaking{
     }
 
     function updateOwner(address user) onlyOwner public{
+        require(user != address(0), "Owner Address can not be null");
         owner = user;
     }
 
