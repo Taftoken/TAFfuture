@@ -10,12 +10,14 @@ contract TAFYearlyStaking{
 
     uint256 public immutable lockingPeriodInYears;
     uint256 public totalSupply;
-    uint256 public withdrawFee;
-    uint256 public rollOverFee;
+    uint256 public stakingFee;
+    uint256 public rewardFee;
     uint256 public unstakePenalty;
     uint256 public maxTotalStakingAmount;
     uint256 public maxUserStakingAmount;
     uint256 public minUserStakingAmount;
+    uint256 public totalActiveUsers;
+    uint256 public apy;
 
     address public owner;
     address public charityAddress;
@@ -26,20 +28,24 @@ contract TAFYearlyStaking{
     mapping(address => uint256) public rewardsOut;
     mapping(address => uint256) public timestamp;
     mapping(uint256 => uint256) public apyOnYear;
+    mapping(address => bool) public isUserActive;
 
     modifier onlyOwner {
       require(msg.sender == owner);
       _;
    }
 
-    constructor(address _stakingToken, address _rewardsToken, uint256 _lockingPeriodInYears){
+    constructor(address _stakingToken, address _rewardsToken, uint256 _lockingPeriodInYears, uint256 _apy){
         stakingToken = IERC20(_stakingToken);
         rewardsToken = IERC20(_rewardsToken);
         lockingPeriodInYears = _lockingPeriodInYears;
 
-        withdrawFee = 200;
-        rollOverFee = 100;
+        stakingFee = 200;
+        unstakePenalty = 80;
 
+        apy = _apy;
+
+        charityAddress = 0x4cede0F5CD88e3b01E30A5edf5503EE7B3d84Cde;
         owner = msg.sender;
     }
 
@@ -67,12 +73,12 @@ contract TAFYearlyStaking{
         maxUserStakingAmount = amount;
     }
 
-    function updateWithdrawFee(uint256 amount) onlyOwner public{
-        withdrawFee = amount;
+    function updateStakingFee(uint256 amount) onlyOwner public{
+        stakingFee = amount;
     }
 
-    function updateRollOverFee(uint256 amount) onlyOwner public{
-        rollOverFee = amount;
+    function updateRewardFee(uint256 amount) onlyOwner public{
+        rewardFee = amount;
     }
 
     function updateOwner(address user) onlyOwner public{
@@ -85,11 +91,11 @@ contract TAFYearlyStaking{
     }
 
     function depositRewardToken(uint256 _amount) public{
-        rewardsToken.transferFrom(msg.sender, address(this), _amount);
+        safeTransferFrom(rewardsToken, msg.sender, address(this), _amount);
     }
 
     function withdrawRewardToken(uint256 _amount) onlyOwner public{
-        rewardsToken.transfer(msg.sender, _amount);
+        safeTransfer(rewardsToken, msg.sender, _amount);
     }
 
     function timings() public view returns (uint256, uint256){
@@ -101,20 +107,8 @@ contract TAFYearlyStaking{
         return (balances[msg.sender], earned(), start, end);
     }
 
-    function apy() public view returns(uint256){
-
-        if(timestamp[msg.sender] == 0)
-            return apyOnYear[1];
-
-        uint256 yearDiff = BokkyPooBahsDateTimeLibrary.diffYears(timestamp[msg.sender], block.timestamp);
-
-        uint256 thisYearMinDiff = BokkyPooBahsDateTimeLibrary.diffMinutes(timestamp[msg.sender], block.timestamp) - (yearDiff * 525600);
-
-        if(thisYearMinDiff > 0){
-            return apyOnYear[yearDiff + 1];
-        }else{
-            return apyOnYear[yearDiff];
-        }
+    function updateAPY(uint256 _apy) public{
+        apy = _apy;
     }
 
     function isForceUnstakeNeeded() public view returns(bool){
@@ -133,30 +127,35 @@ contract TAFYearlyStaking{
         if(maxTotalStakingAmount > 0)
             require(totalSupply + _amount <= maxTotalStakingAmount, "Max Staking amount reached");
 
-        if(balances[msg.sender] > 0){
-            totalSupply += earned();
-            balances[msg.sender] += earned();
-        }
+
+        require(balances[msg.sender] == 0, "Can not restake");
+
+
+        uint256 fee = (_amount * stakingFee) / 10000;
         
-        totalSupply += _amount;
-        balances[msg.sender] += _amount;
+        totalSupply += _amount - fee;
+        balances[msg.sender] += _amount - fee;
 
         safeTransferFrom(stakingToken, msg.sender, address(this), _amount);
+
+        if(fee > 0)
+            safeTransfer(stakingToken, owner, fee);
+
         timestamp[msg.sender] = block.timestamp;
         rewardsOut[msg.sender] = 0;
+
+        if(!isUserActive[msg.sender]){
+            totalActiveUsers++;
+            isUserActive[msg.sender] = true;
+        }
     }
 
     function unstake(uint256 _amount) public{
         require(block.timestamp > BokkyPooBahsDateTimeLibrary.addYears(timestamp[msg.sender], lockingPeriodInYears), "Can only withdraw once the time is right");
         require(balances[msg.sender] >= _amount, "Not have enough balance");
 
-        uint256 fee = (_amount * withdrawFee)/10000;
-
         if(_amount > 0)
-            safeTransfer(stakingToken, msg.sender, _amount - fee);
-
-        if(fee > 0)
-            safeTransfer(stakingToken, owner, fee);
+            safeTransfer(stakingToken, msg.sender, _amount);
 
         if(earned() > 0)
             safeTransfer(rewardsToken, msg.sender, earned());
@@ -165,13 +164,19 @@ contract TAFYearlyStaking{
         balances[msg.sender] -= _amount;
         timestamp[msg.sender] = block.timestamp;
         rewardsOut[msg.sender] = 0;
+
+        if(balances[msg.sender] == 0){
+            totalActiveUsers--;
+            isUserActive[msg.sender] = false;
+        }
     }
 
     function forceUnstake(uint256 _amount) public{
         require(block.timestamp < BokkyPooBahsDateTimeLibrary.addYears(timestamp[msg.sender], lockingPeriodInYears), "Can only withdraw once the time is right");
         require(balances[msg.sender] >= _amount, "Not have enough balance");
 
-        uint256 minDiff =  BokkyPooBahsDateTimeLibrary.diffMinutes(timestamp[msg.sender], block.timestamp);
+        uint256 expiryDay = BokkyPooBahsDateTimeLibrary.addYears(timestamp[msg.sender], lockingPeriodInYears);
+        uint256 minDiff =  BokkyPooBahsDateTimeLibrary.diffMinutes(block.timestamp, expiryDay);
 
         uint256 fee = 0;
 
@@ -192,6 +197,11 @@ contract TAFYearlyStaking{
         balances[msg.sender] -= _amount;
         timestamp[msg.sender] = block.timestamp;
         rewardsOut[msg.sender] = 0;
+
+        if(balances[msg.sender] == 0){
+            totalActiveUsers--;
+            isUserActive[msg.sender] = false;
+        }
     }
 
     function earned() public view returns(uint256){
@@ -214,19 +224,19 @@ contract TAFYearlyStaking{
 
     function withdrawReward(uint256 pAmount) public{
 
-        require(pAmount + withdrawFee <= 10000, "Can only donate 100% of reward token");
+        require(pAmount + rewardFee <= 10000, "Can only donate 100% of reward token");
 
         uint256 amount = earned();
 
         uint256 charity = 0;
 
-        uint256 fee = (withdrawFee * amount) / 10000;
+        uint256 fee = (rewardFee * amount) / 10000;
 
         if(pAmount > 0){
             charity = (pAmount * amount) / 10000;
 
-        if(charity > 0)
-            safeTransfer(rewardsToken, charityAddress, charity);
+            if(charity > 0)
+                safeTransfer(rewardsToken, charityAddress, charity);
 
         }
 
